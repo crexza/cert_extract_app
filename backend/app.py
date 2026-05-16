@@ -5,127 +5,90 @@ from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 import shutil
 import os
-import utils
+import utils as utils
 
 # --- SETUP ---
+# Ensure necessary directories exist
 os.makedirs("static", exist_ok=True)
 os.makedirs("templates", exist_ok=True)
-os.makedirs("temp_pdfs", exist_ok=True)
+# Use /tmp to ensure write permissions in containerized environments
+TEMP_DIR = "/tmp/temp_pdfs"
+os.makedirs(TEMP_DIR, exist_ok=True)
 
 app = FastAPI()
 
+# Mount static files (logos, css)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
+# --- CORS ---
+# Required so your index.html (Frontend) can talk to this API (Backend)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"], # In production, replace with your actual domain
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --- WEB ---
+# --- WEB UI ---
 @app.get("/", response_class=HTMLResponse)
 async def serve_admin_panel(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    if not os.path.exists("templates/index.html"):
+        return HTMLResponse("<h2>Error: index.html not found in backend/templates/</h2>", status_code=404)
+    
+    # FIXED: Updated syntax for newer Starlette/FastAPI versions
+    return templates.TemplateResponse(
+        request=request, 
+        name="index.html", 
+        context={}
+    )
 
 # --- COLLECTIONS ---
 @app.get("/api/collections")
 def list_collections():
     base = ["GD", "EEBD", "HARNESS", "ABSORBER", "SMOKE HOOD", "SCBA", "AREA MONITOR", "RESCUE KIT"]
+    # Generates standard and _SERVICE collections dynamically
     return {
         "collections": [c for b in base for c in (b, f"{b}_SERVICE")]
     }
 
 @app.get("/api/collection/{name}")
 def get_collection_data(name: str):
-    db, _ = utils.get_firebase_db()
-    docs = db.collection(name).stream()
+    try:
+        db, _ = utils.get_firebase_db()
+        docs = db.collection(name).stream()
 
-    data = []
-    for doc in docs:
-        d = doc.to_dict()
-        d["id"] = doc.id
-
-        if d.get("last_updated"):
-            d["last_updated"] = d["last_updated"].isoformat()
-
-        data.append(d)
-
-    return {"data": data}
-
-# --- SEARCH ---
-@app.get("/api/search")
-def search_all(q: str):
-    db, _ = utils.get_firebase_db()
-    q = q.strip()
-
-    base = ["GD", "EEBD", "HARNESS", "ABSORBER", "SMOKE HOOD", "SCBA", "AREA MONITOR", "RESCUE KIT"]
-    collections = base + [f"{b}_SERVICE" for b in base]
-
-    results = []
-
-    safe_q = utils.sanitize_filename(q)
-
-    for col in collections:
-        doc = db.collection(col).document(safe_q).get()
-        if doc.exists:
+        data = []
+        for doc in docs:
             d = doc.to_dict()
             d["id"] = doc.id
-            d["collection"] = col
-            results.append(d)
-            continue
+            if d.get("last_updated"):
+                d["last_updated"] = d["last_updated"].isoformat()
+            data.append(d)
+        return {"data": data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Firebase Error: {str(e)}")
 
-        for doc in db.collection(col).where("serial", "==", q).stream():
-            d = doc.to_dict()
-            d["id"] = doc.id
-            d["collection"] = col
-            results.append(d)
-
-    return {"results": results}
-
-# --- UPDATE ---
-@app.post("/api/update_record")
-async def update_record(
-    collection: str = Form(...),
-    serial: str = Form(...),
-    model: str = Form(""),
-    cal: str = Form(""),
-    exp: str = Form(""),
-    cert: str = Form(""),
-    lot: str = Form("")
-):
-    db, _ = utils.get_firebase_db()
-
-    db.collection(collection).document(
-        utils.sanitize_filename(serial)
-    ).update({
-        "model": model,
-        "cal": cal,
-        "exp": exp,
-        "cert": cert,
-        "lot": lot
-    })
-
-    return {"status": "success"}
-
-# --- EXTRACT ---
+# --- EXTRACT (Groq / Gemini) ---
 @app.post("/extract")
 async def extract_pdf(
     file: UploadFile = File(...),
     is_service: str = Form("false")
 ):
-    temp_path = f"temp_pdfs/{file.filename}"
+    temp_path = os.path.join(TEMP_DIR, file.filename)
 
     try:
         with open(temp_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
+        # Calls the AI logic from utils.py
         return utils.process_pdf_text(
             temp_path,
             is_service=is_service.lower() == "true"
         )
-
+    except Exception as e:
+        return {"status": "failed", "error": str(e)}
     finally:
         if os.path.exists(temp_path):
             os.remove(temp_path)
@@ -142,37 +105,37 @@ async def save_record(
     lot: str = Form(""),
     collection: str = Form(...)
 ):
-    temp_path = f"temp_pdfs/{file.filename}"
+    temp_path = os.path.join(TEMP_DIR, file.filename)
 
     try:
         with open(temp_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
+        # Upload Assets
         pdf_url = utils.upload_to_firebase_storage(temp_path, serial, is_qr=False)
         qr_link = f"https://qrcertificates-30ddb.web.app/?id={utils.quote_plus(serial)}"
         qr_path = utils.generate_qr_image_only(serial, qr_link)
         qr_image_url = utils.upload_to_firebase_storage(qr_path, serial, is_qr=True)
 
-        utils.update_firestore_record(
+        # Save to Firestore
+        success = utils.update_firestore_record(
             collection,
             serial,
-            {
-                "model": model,
-                "cal": cal,
-                "exp": exp,
-                "cert": cert,
-                "lot": lot
-            },
+            {"model": model, "cal": cal, "exp": exp, "cert": cert, "lot": lot},
             pdf_url,
             qr_image_url,
             qr_link
         )
 
-        return {"status": "success", "web_link": qr_link}
+        if success:
+            return {"status": "success", "web_link": qr_link}
+        else:
+            raise HTTPException(status_code=500, detail="Firestore save failed")
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
     finally:
         if os.path.exists(temp_path):
             os.remove(temp_path)
+        # Clean up generated QR local file
+        # (qr_path logic would go here if defined in this scope)

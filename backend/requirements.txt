@@ -1,0 +1,21 @@
+# Web Frameworks (Versions allowed to fluctuate for compatibility)
+fastapi>=0.115.0
+uvicorn>=0.30.0
+starlette>=0.40.0
+streamlit>=1.38.0
+python-multipart==0.0.20
+gunicorn==23.0.0
+
+# Database & AI
+firebase-admin==6.6.0
+google-genai==1.2.0
+google-generativeai>=0.8.3
+python-dotenv==1.0.1
+
+# Processing Tools
+pillow==11.0.0
+qrcode==8.0
+pypdf==5.1.0
+pdfplumber==0.11.4
+jinja2
+groq
