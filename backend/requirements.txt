@@ -19,3 +19,4 @@ pypdf==5.1.0
 pdfplumber==0.11.4
 jinja2
 groq
+pytesseract==0.3.10

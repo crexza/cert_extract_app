@@ -1,10 +1,27 @@
 services:
   backend:
-    build: ./backend
-    container_name: cert_backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     ports:
       - "8000:8000"
-    volumes:
-      - ./backend:/app
-    env_file:
-      - .env
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - FIREBASE_BUCKET=${FIREBASE_BUCKET}
+      - FIREBASE_CREDENTIALS=${FIREBASE_CREDENTIALS}
+    restart: always
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000
+    depends_on:
+      - backend
+    restart: always
