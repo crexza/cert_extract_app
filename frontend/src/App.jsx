@@ -18,7 +18,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [collections, setCollections] = useState([]);
-  const [currentCollection, setCurrentCollection] = useState('');
+  const [currentCollection, setCurrentCollection] = useState([]);
   const [rawData, setRawData] = useState([]);
   const [filteredData, setFilteredData] = useState([]);
 
@@ -79,20 +79,54 @@ export default function App() {
     }
   };
 
-  const loadCollectionData = async (collectionName) => {
-    setCurrentCollection(collectionName);
-    setRawData([]);
+const loadCollectionData = async (collectionName) => {
+  let updatedCollections = [];
 
-    try {
-      const response = await axios.get(`${API_BASE_URL}/api/collection/${collectionName}`);
+  // Toggle collection selection
+  if (currentCollection.includes(collectionName)) {
+    updatedCollections = currentCollection.filter(
+      (c) => c !== collectionName
+    );
+  } else {
+    updatedCollections = [...currentCollection, collectionName];
+  }
+
+  setCurrentCollection(updatedCollections);
+
+  // Nothing selected
+  if (updatedCollections.length === 0) {
+    setRawData([]);
+    setFilteredData([]);
+    return;
+  }
+
+  try {
+    let mergedData = [];
+
+    // Load all selected collections
+    for (const collection of updatedCollections) {
+      const response = await axios.get(
+        `${API_BASE_URL}/api/collection/${collection}`
+      );
+
       const data = response.data.data || [];
 
-      setRawData(data);
-      extractAvailableYears(data, dateType);
-    } catch (error) {
-      console.error(error);
+      // Add collection name into each row
+      const taggedData = data.map((item) => ({
+        ...item,
+        _collection: collection,
+      }));
+
+      mergedData = [...mergedData, ...taggedData];
     }
-  };
+
+    setRawData(mergedData);
+    extractAvailableYears(mergedData, dateType);
+
+  } catch (error) {
+    console.error("Collection loading error:", error);
+  }
+};
 
   const extractAvailableYears = (data, targetDateType) => {
     const yearsSet = new Set();
@@ -249,6 +283,7 @@ export default function App() {
 
     try {
       await axios.delete(`${API_BASE_URL}/api/collection/${colName}/${itemId}`);
+      setCurrentCollection((prev) => [...prev]);
       loadCollectionData(colName);
     } catch (err) {
       alert('Delete failed');
