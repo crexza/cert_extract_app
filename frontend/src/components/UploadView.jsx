@@ -275,7 +275,7 @@ Exp:${formFields.exp || ""}`;
               onClick={onExecuteManualSave}
               className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 shadow-md transition focus:outline-none"
             >
-              Save Manual Entry File Association
+              Save Entry
             </button>
 
           </div>
