@@ -40,7 +40,7 @@ export default function DashboardView({
             <i className="fas fa-search absolute left-3 top-3 text-gray-400"></i>
             <input
               type="text"
-              placeholder="Search explicitly mapped properties..."
+              placeholder="Search..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full border dark:border-gray-600 pl-10 pr-4 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-gray-700 dark:text-white transition"
