@@ -54,7 +54,7 @@ Exp:${formFields.exp || ""}`;
 
             <div className="text-center mb-10">
               <h1 className="text-3xl font-bold text-gray-800 dark:text-white mb-3">
-                New Entry Ingestion
+                New Entry
               </h1>
 
               <p className="text-gray-500 dark:text-gray-400">
@@ -114,7 +114,7 @@ Exp:${formFields.exp || ""}`;
               className="absolute top-8 right-8 bg-purple-600 text-white px-4 py-2 rounded-lg shadow-md hover:bg-purple-700 transition z-10 flex items-center text-sm font-semibold"
             >
               <i className="fas fa-list-check mr-2"></i>
-              Review Batch Results
+              Review Results
             </button>
           )}
 
@@ -288,7 +288,7 @@ Exp:${formFields.exp || ""}`;
             </h4>
 
             <div className="h-40 bg-gray-200 dark:bg-gray-600 rounded-lg flex items-center justify-center text-gray-400 dark:text-gray-400 text-xs font-medium border border-dashed dark:border-gray-500">
-              No Active PDF Document Input Selected
+              No PDF Document Selected
             </div>
 
             <div>
