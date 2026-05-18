@@ -167,7 +167,7 @@ Exp:${formFields.exp || ""}`;
               </p>
 
               <p className="text-xs text-gray-400 mt-1.5">
-                Supports automated multi-page batch extraction
+                Supports multi-page extraction
               </p>
 
               <input
@@ -308,7 +308,7 @@ Exp:${formFields.exp || ""}`;
               >
                 {formFields.serial
                   ? computedNFCPayload
-                  : "(Fill core variables to compile tracking telemetry)"}
+                  : "(Fill core variables)"}
               </div>
             </div>
 
