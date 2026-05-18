@@ -169,7 +169,7 @@ export default function App() {
   // --- ACTIONS & OPERATIONS ---
   const toggleTheme = () => {
     if (isDarkMode) {
-      document.documentElement.classList.remove('light');
+      document.documentElement.classList.remove('dark');
       localStorage.setItem('theme', 'light');
       setIsDarkMode(false);
     } else {
