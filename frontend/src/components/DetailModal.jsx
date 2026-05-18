@@ -126,7 +126,7 @@ export default function DetailModal({ item, currentCollection, onClose, onUpdate
             onClick={() => onUpdateCommit(fields)}
             className="w-full bg-green-600 text-white py-2.5 rounded-lg font-bold hover:bg-green-700 transition shadow-md focus:outline-none"
           >
-            Save Parameter Updates
+            Save Updates
           </button>
         </div>
 
