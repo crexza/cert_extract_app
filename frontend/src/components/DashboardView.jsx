@@ -159,7 +159,7 @@ export default function DashboardView({
                       <button
                         onClick={(e) => onDeleteItem(currentCollection, item.id, e)}
                         className="text-red-400 hover:text-red-600 dark:hover:text-red-300 focus:outline-none inline-block"
-                        title="Purge Record Entry"
+                        title="Remove Record Entry"
                       >
                         <i className="fas fa-trash text-base"></i>
                       </button>
