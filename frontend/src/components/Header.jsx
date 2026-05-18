@@ -47,7 +47,7 @@ export default function Header({ activeTab, setActiveTab, isDarkMode, onToggleTh
           <button
             onClick={onToggleTheme}
             className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-gray-600 dark:text-yellow-400 hover:bg-gray-200 dark:hover:bg-gray-600 transition ml-2"
-            title="Toggle Dark Mode"
+            title="Switch to Dark Mode"
           >
             <i className={`fas ${isDarkMode ? "fa-sun" : "fa-moon"}`}></i>
           </button>
