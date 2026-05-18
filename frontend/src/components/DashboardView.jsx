@@ -27,7 +27,9 @@ export default function DashboardView({
       <div className="p-4 border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-bold text-gray-700 dark:text-gray-200">
-            {currentCollection ? currentCollection.replace("_SERVICE", " (Service)") : "Select a Collection"}
+            {Array.isArray(currentCollection) && currentCollection.length > 0
+              ? `${currentCollection.length} Folders Selected`
+              : "Select Folders"}
           </h2>
           <span className="text-xs bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2.5 py-1 rounded-full font-medium">
             {filteredData.length} items
