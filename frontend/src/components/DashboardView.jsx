@@ -115,7 +115,7 @@ export default function DashboardView({
             {filteredData.length === 0 ? (
               <tr>
                 <td colSpan="5" className="p-10 text-center text-gray-400 dark:text-gray-500 font-medium">
-                  {currentCollection ? "No records match current parameters." : "Select a folder namespace to review data assets."}
+                  {currentCollection ? "No records match current selection." : "Select a folder namespace to review data assets."}
                 </td>
               </tr>
             ) : (
