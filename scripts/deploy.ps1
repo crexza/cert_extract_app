@@ -1,10 +1,16 @@
 Write-Host "Starting local automated deployment..."
 
-Write-Host "Removing old CertExt containers if they exist..."
-docker rm -f cert_extract_app-main-backend-1 2>$null
-docker rm -f cert_extract_app-main-frontend-1 2>$null
-docker rm -f cert_extract_app-backend-1 2>$null
-docker rm -f cert_extract_app-frontend-1 2>$null
+Write-Host "Stopping and removing containers using ports 3000 and 8000 if they exist..."
+
+$containers = docker ps -aq --filter "publish=3000"
+if ($containers) {
+    docker rm -f $containers
+}
+
+$containers = docker ps -aq --filter "publish=8000"
+if ($containers) {
+    docker rm -f $containers
+}
 
 Write-Host "Stopping old Docker Compose containers..."
 docker compose down --remove-orphans
