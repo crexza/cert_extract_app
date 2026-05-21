@@ -314,6 +314,11 @@ const loadCollectionData = async (collectionName) => {
         isDarkMode={isDarkMode}
         onToggleTheme={toggleTheme}
       />
+      <div className="w-full text-center py-2 bg-gray-100 dark:bg-gray-800">
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Deployment Version: v1.0 
+        </p>
+      </div>
 
       <main className="flex-1 max-w-7xl mx-auto w-full p-6 overflow-hidden">
         {activeTab === 'dashboard' ? (
