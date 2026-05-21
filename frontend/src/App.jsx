@@ -316,7 +316,7 @@ const loadCollectionData = async (collectionName) => {
       />
       <div className="w-full text-center py-2 bg-gray-100 dark:bg-gray-800">
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          Deployment Version: v1.0 
+          Deployment Version: v1.1
         </p>
       </div>
 
