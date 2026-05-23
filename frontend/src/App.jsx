@@ -52,6 +52,8 @@ export default function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
 
+  const [selectedPdfFile, setSelectedPdfFile] = useState(null);
+
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -252,12 +254,56 @@ const loadCollectionData = async (collectionName) => {
   };
 
   const processFilesPipeline = async (filesList) => {
-    setLoading(true);
+  if (!filesList || filesList.length === 0) return;
+  setSelectedPdfFile(filesList[0]);
 
-    setTimeout(() => {
-      setLoading(false);
-    }, 2000);
-  };
+  setLoading(true);
+  setLoadingText('Extracting certificate data from PDF...');
+
+  try {
+    const extractedResults = [];
+
+    for (const file of Array.from(filesList)) {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('is_service', isServiceUpload ? 'true' : 'false');
+
+      const response = await axios.post(`${API_BASE_URL}/extract`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      extractedResults.push(response.data);
+    }
+
+    setBatchResults(extractedResults);
+
+    if (extractedResults.length === 1) {
+      const result = extractedResults[0];
+
+      setFormSerial(result.serial || '');
+      setFormModel(result.model || '');
+      setFormCal(result.cal || result.calibration_date || '');
+      setFormExp(result.exp || result.expiry_date || '');
+      setFormCert(result.cert || result.certificate_no || '');
+      setFormLot(result.lot || '');
+    }
+
+    setIsBatchModalOpen(true);
+  } catch (error) {
+    console.error('PDF extraction failed:', error);
+
+    const message =
+      error.response?.data?.detail ||
+      error.message ||
+      'PDF extraction failed. Please check the backend connection.';
+
+    alert(message);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleFormFieldChange = (field, value) => {
     if (field === 'serial') setFormSerial(value);
@@ -269,8 +315,54 @@ const loadCollectionData = async (collectionName) => {
   };
 
   const executeManualSave = async () => {
-    alert('Manual save triggered');
-  };
+  if (!fileInputRef.current?.files?.[0]) {
+    alert('Please upload a PDF file before saving.');
+    return;
+  }
+
+  if (!formSerial.trim()) {
+    alert('Serial number is required before saving.');
+    return;
+  }
+
+  setLoading(true);
+  setLoadingText('Saving certificate record...');
+
+  try {
+    const formData = new FormData();
+    formData.append('file', fileInputRef.current.files[0]);
+    formData.append('serial', formSerial);
+    formData.append('model', formModel);
+    formData.append('cal', formCal);
+    formData.append('exp', formExp);
+    formData.append('cert', formCert);
+    formData.append('lot', formLot);
+    formData.append(
+      'collection',
+      isServiceUpload ? 'GD_SERVICE' : 'GD'
+    );
+
+    await axios.post(`${API_BASE_URL}/save`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+
+    alert('Certificate record saved successfully.');
+    fetchCollectionsList();
+  } catch (error) {
+    console.error('Save failed:', error);
+
+    const message =
+      error.response?.data?.detail ||
+      error.message ||
+      'Failed to save certificate record.';
+
+    alert(message);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const commitManualEntryUpdate = async () => {
     setIsModalOpen(false);
