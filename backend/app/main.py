@@ -20,16 +20,17 @@ app = FastAPI(
 # --- CORS INTERCEPTOR CONFIGURATION ---
 # Allows explicit connection parameters from your Vite development and containerized environments
 ALLOWED_ORIGINS = [
-    "http://localhost:5173",            # Default Vite Dev Server Local Port
-    "http://127.0.0.1:5173",            # Vite Dev Server Loopback Address
-    "http://localhost:3000",            # Production Docker Container Frontend Port
-    "http://127.0.0.1:3000",            # Production Docker Container Loopback Address
-    "https://cert_extract_app.web.app"  # Production Firebase URL mapping
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://cert_extract_app.web.app"
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
