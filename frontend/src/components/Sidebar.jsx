@@ -2,45 +2,30 @@ import React from "react";
 
 /**
  * Sidebar Component
- * Displays available database collections
- * grouped by functional utility types.
+ * Displays available folders grouped by category types.
  */
-export default function Sidebar({
-  collections,
-  currentCollection,
-  onSelectCollection,
-}) {
-
-  const selectedCount = Array.isArray(currentCollection)
-    ? currentCollection.length
-    : 0;
+export default function Sidebar({ collections, currentCollection, onSelectCollection }) {
+  // Checks if the current folder is active (supporting fallback text)
+  const activeFolder = typeof currentCollection === "string" ? currentCollection : "";
 
   return (
-    <div className="w-72 bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 h-full flex flex-col transition-colors duration-200">
+    <div className="flex flex-col h-full p-4 transition-colors duration-200 bg-white border border-gray-100 shadow-sm w-72 dark:bg-gray-800 rounded-xl dark:border-gray-700/50">
 
-      {/* Header */}
-      <div className="mb-4">
-
-        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+      {/* Header Info */}
+      <div className="mb-4 select-none">
+        <h3 className="text-xs font-bold tracking-wider text-gray-400 uppercase">
           Folders
         </h3>
-
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-          {selectedCount} selected
+        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          {activeFolder ? "1 folder selected" : "No folder selected"}
         </p>
-
       </div>
 
-      {/* Collections List */}
-      <div className="flex-1 overflow-y-auto space-y-1 pr-1">
-
+      {/* Folders List */}
+      <div className="flex-1 pr-1 space-y-1 overflow-y-auto">
         {collections.map((col) => {
-
           const isService = col.includes("SERVICE");
-
-          const isActive = Array.isArray(currentCollection)
-            ? currentCollection.includes(col)
-            : false;
+          const isActive = activeFolder === col;
 
           return (
             <button
@@ -52,42 +37,34 @@ export default function Sidebar({
                   : "border-transparent text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50"
               }`}
             >
-
-              {/* Left Section */}
+              {/* Folder Icon and Label */}
               <div className="flex items-center min-w-0">
-
                 <i
                   className={`fas ${
-                    isService
-                      ? "fa-tools text-purple-400"
-                      : "fa-folder text-yellow-400"
+                    isService ? "fa-tools text-purple-400" : "fa-folder text-yellow-400"
                   } mr-3 text-base`}
                 ></i>
-
-                <span className="truncate">
+                <span className="font-medium tracking-wide truncate">
                   {col.replace("_SERVICE", " (Client)")}
                 </span>
-
               </div>
 
-              {/* Right Check */}
+              {/* Selection Indicator */}
               {isActive && (
-                <div className="ml-2 flex-shrink-0">
-                  <i className="fas fa-check-circle text-blue-500 dark:text-blue-300"></i>
+                <div className="flex-shrink-0 ml-2 animate-scaleIn">
+                  <i className="text-blue-500 fas fa-check-circle dark:text-blue-300"></i>
                 </div>
               )}
-
             </button>
           );
         })}
 
         {/* Empty State */}
         {collections.length === 0 && (
-          <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-10">
-            No records
+          <div className="py-10 text-sm font-medium text-center text-gray-400 select-none dark:text-gray-500">
+            No folders found.
           </div>
         )}
-
       </div>
     </div>
   );

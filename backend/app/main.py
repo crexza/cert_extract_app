@@ -1,270 +1,226 @@
 import os
 import shutil
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
+import time
+import qrcode
+from typing import List, Optional
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-import app.utils as utils  # Standardized app directory relative mapping
+from app.firebase_config import get_firebase_db
+from app.pdf_processing import split_pdf_to_pages, extract_master_text, sanitize_filename
+import app.ai_mapping as ai_mapping
+from firebase_admin import firestore
+from pydantic import BaseModel
+from urllib.parse import quote_plus
 
-# --- RUNTIME DIRECTORY INITIALIZATION ---
-# Using isolated container-friendly /tmp file targets uniform with your utils file
 TEMP_PDF_DIR = "/tmp/temp_pdfs"
 os.makedirs(TEMP_PDF_DIR, exist_ok=True)
 
-app = FastAPI(
-    title="CertExtract Core API",
-    description="Decoupled backend microservice managing Firestore entity mapping and AI extraction routines.",
-    version="1.0.0"
-)
-
-# --- CORS INTERCEPTOR CONFIGURATION ---
-# Allows explicit connection parameters from your Vite development and containerized environments
-ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "https://cert_extract_app.web.app"
-]
+app = FastAPI(title="CertExtract Core API Engine")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --- WEB / ROOT MANAGEMENT ---
-@app.get("/", tags=["Root"])
-def read_root():
-    """
-    Returns standard structural telemetry metadata to indicate the API is operational.
-    """
-    return {
-        "status": "online",
-        "service": "CertExtract Functional API Engine",
-        "endpoints": ["/api/collections", "/api/search", "/extract", "/save"]
-    }
+# Request schema definitions for multi-selection data deletions
+class DeleteRecordsPayload(BaseModel):
+    collection: str
+    ids: List[str]
 
-@app.get("/favicon.ico", include_in_schema=False)
-async def serve_backend_favicon():
-    """
-    Catches automatic browser hits to backend root favicon routes.
-    Returns a blank status 204 to maintain console cleanliness since Vite handles the client icon.
-    """
-    return FileResponse(status_code=204)
+# Request schema definitions for updating/editing records without requiring a new file binary stream
+class EditRecordPayload(BaseModel):
+    collection: str
+    id: str
+    serial: str
+    model: Optional[str] = ""
+    calibration_date: str
+    expiry_date: str
+    cert: Optional[str] = ""
+    lot: Optional[str] = ""
 
-# --- COLLECTIONS MANAGEMENT ---
-@app.get("/api/collections", tags=["Firestore Collections"])
+@app.get("/api/collections")
 def list_collections():
-    """
-    Generates a list of all raw master item collections and service sub-tables.
-    """
-    base_assets = ["GD", "EEBD", "HARNESS", "ABSORBER", "SMOKE HOOD", "SCBA", "AREA MONITOR", "RESCUE KIT"]
-    compiled_collections = []
-    
+    base_assets = ["GD", "EEBD", "HARNESS", "ABSORBER", "SMOKE HOOD", "SCBA", "AREA MONITOR", "RESCUE KIT", "UNRESOLVED"]
+    compiled = []
     for asset in base_assets:
-        compiled_collections.append(asset)
-        compiled_collections.append(f"{asset}_SERVICE")
-        
-    return {"collections": compiled_collections}
+        compiled.append(asset)
+        if asset != "UNRESOLVED":
+            compiled.append(f"{asset}_SERVICE")
+    return {"collections": compiled}
 
-@app.get("/api/collection/{name}", tags=["Firestore Collections"])
+@app.get("/api/collection/{name}")
 def get_collection_data(name: str):
-    """
-    Streams snapshot records matching specific firestore database table queries.
-    """
     try:
-        db, _ = utils.get_firebase_db()
+        db, _ = get_firebase_db()
         docs = db.collection(name).stream()
-
         data_payload = []
         for doc in docs:
-            record_dict = doc.to_dict()
-            record_dict["id"] = doc.id
-
-            if record_dict.get("last_updated"):
-                # Formats datetime timestamps smoothly for JavaScript client ingestion
-                record_dict["last_updated"] = record_dict["last_updated"].isoformat()
-
-            data_payload.append(record_dict)
-
+            record = doc.to_dict()
+            record["id"] = doc.id
+            if record.get("last_updated"):
+                record["last_updated"] = record["last_updated"].isoformat()
+            data_payload.append(record)
         return {"data": data_payload}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database streaming failure: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-# --- SEARCH ACTIONS ---
-@app.get("/api/search", tags=["Query Operations"])
-def search_all(q: str):
-    """
-    Iterates cross-collection indexes looking for an explicit Document ID or Serial string match.
-    """
-    db, _ = utils.get_firebase_db()
-    query_string = q.strip()
-
-    base_assets = ["GD", "EEBD", "HARNESS", "ABSORBER", "SMOKE HOOD", "SCBA", "AREA MONITOR", "RESCUE KIT"]
-    collections_index = base_assets + [f"{b}_SERVICE" for b in base_assets]
-
-    search_results = []
-    sanitized_query = utils.sanitize_filename(query_string)
-
-    for collection_name in collections_index:
-        # Step 1: Query directly by Document Key ID for lightning fast O(1) matching
-        document_snapshot = db.collection(collection_name).document(sanitized_query).get()
-        if document_snapshot.exists:
-            record_data = document_snapshot.to_dict()
-            record_data["id"] = document_snapshot.id
-            record_data["collection"] = collection_name
-            search_results.append(record_data)
-            continue
-
-        # Step 2: Fallback query checking internal properties via an index scan
-        fallback_stream = db.collection(collection_name).where("serial", "==", query_string).stream()
-        for active_doc in fallback_stream:
-            record_data = active_doc.to_dict()
-            record_data["id"] = active_doc.id
-            record_data["collection"] = collection_name
-            search_results.append(record_data)
-
-    return {"results": search_results}
-
-# --- UPDATE OPERATIONS ---
-@app.post("/api/update_record", tags=["Record Operations"])
-async def update_record(
-    collection: str = Form(...),
-    serial: str = Form(...),
-    model: str = Form(""),
-    cal: str = Form(""),
-    exp: str = Form(""),
-    cert: str = Form(""),
-    lot: str = Form("")
-):
-    """
-    Updates the target field configurations inside an existing Firestore record.
-    """
-    try:
-        db, _ = utils.get_firebase_db()
-        document_key = utils.sanitize_filename(serial)
-        
-        db.collection(collection).document(document_key).update({
-            "model": model,
-            "cal": cal,
-            "exp": exp,
-            "cert": cert,
-            "lot": lot
-        })
-        return {"status": "success", "updated_id": document_key}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to modify target entity: {str(e)}")
-
-# --- DELETE OPERATIONS ---
-@app.delete("/api/collection/{collection_name}/{doc_id}", tags=["Record Operations"])
-def delete_record(collection_name: str, doc_id: str):
-    """
-    Safely drops a specific certificate entry out of target Firestore collections.
-    """
-    try:
-        db, _ = utils.get_firebase_db()
-        sanitized_doc_id = utils.sanitize_filename(doc_id)
-        
-        # Reference the exact document target path and drop it from the ledger tree
-        doc_ref = db.collection(collection_name).document(sanitized_doc_id)
-        if not doc_ref.get().exists:
-            raise HTTPException(status_code=404, detail="Target document could not be resolved.")
-            
-        doc_ref.delete()
-        return {"status": "success", "message": f"Document {sanitized_doc_id} successfully purged."}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to purge entity tracking records: {str(e)}")
-
-# --- AI DATA EXTRACTION ROUTINES ---
-@app.post("/extract", tags=["AI Engineering"])
-async def extract_pdf(
-    file: UploadFile = File(...),
-    is_service: str = Form("false")
-):
-    """
-    Ingests binary multi-page PDF documents and passes structured text targets down to Groq LLM layers.
-    """
+@app.post("/extract")
+async def extract_pdf(file: UploadFile = File(...), is_service: str = Form("false")):
     temporary_file_path = os.path.join(TEMP_PDF_DIR, f"upload_{int(os.getpid())}_{file.filename}")
-
     try:
-        with open(temporary_file_path, "wb") as storage_buffer:
-            shutil.copyfileobj(file.file, storage_buffer)
-
-        extraction_result = utils.process_pdf_text(
-            temporary_file_path,
-            is_service=(is_service.lower() == "true")
-        )
-        return extraction_result
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"PDF ingestion process halted: {str(e)}")
+        with open(temporary_file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+        is_service_bool = (is_service.lower() == "true")
+        isolated_pages = split_pdf_to_pages(temporary_file_path)
+        page_text_map = extract_master_text(temporary_file_path)
         
+        valid_types = ["GD", "EEBD", "HARNESS", "ABSORBER", "SMOKE HOOD", "SCBA", "AREA MONITOR", "RESCUE KIT"]
+        extracted_manifest = []
+        
+        _, bucket = get_firebase_db()
+        preview_blob = bucket.blob(f"previews/{int(time.time())}_{file.filename}")
+        preview_blob.upload_from_filename(temporary_file_path)
+        preview_blob.make_public()
+
+        for pg_file, pg_num in isolated_pages:
+            text_context = page_text_map.get(pg_num, "")
+            parsed_row = ai_mapping.process_single_page_task(pg_file, pg_num, text_context, is_service_bool, valid_types)
+            parsed_row["pdf_url"] = preview_blob.public_url
+            extracted_manifest.append(parsed_row)
+            
+        return {"status": "success", "data": extracted_manifest}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         if os.path.exists(temporary_file_path):
             os.remove(temporary_file_path)
 
-# --- REMOTE FIREBASE SAVE CONFIGURATIONS ---
-@app.post("/save", tags=["Record Operations"])
+@app.post("/save")
 async def save_record(
     file: UploadFile = File(...),
     serial: str = Form(...),
     model: str = Form(""),
-    cal: str = Form(""),
-    exp: str = Form(""),
+    cal: str = Form(...),
+    exp: str = Form(...),
     cert: str = Form(""),
     lot: str = Form(""),
     collection: str = Form(...)
 ):
-    """
-    Saves parsed PDF certificates to storage, draws dynamic asset labels, and structures metadata.
-    """
     temporary_file_path = os.path.join(TEMP_PDF_DIR, f"save_{int(os.getpid())}_{file.filename}")
-
     try:
-        with open(temporary_file_path, "wb") as storage_buffer:
-            shutil.copyfileobj(file.file, storage_buffer)
-
-        # Build dynamic asset records and asset QR paths concurrently
-        firebase_pdf_url = utils.upload_to_firebase_storage(temporary_file_path, serial, is_qr=False)
-        target_web_link = f"https://qrcertificates-30ddb.web.app/?id={utils.quote_plus(serial)}"
+        print(f"📥 Received save payload for SN: {serial} into Collection: {collection}")
         
-        local_qr_img_path = utils.generate_qr_image_only(serial, target_web_link)
-        firebase_qr_url = utils.upload_to_firebase_storage(local_qr_img_path, serial, is_qr=True)
-
-        # Pipeline synchronization write directly to live Firestore document tables
-        db_sync_status = utils.update_firestore_record(
-            collection,
-            serial,
-            {
-                "model": model,
-                "cal": cal,
-                "exp": exp,
-                "cert": cert,
-                "lot": lot
-            },
-            firebase_pdf_url,
-            firebase_qr_url,
-            target_web_link
-        )
-
-        if not db_sync_status:
-            raise Exception("Internal wrapper failed to complete transaction to Firestore collections.")
-
-        # Fixed: Returns all required structural URLs to satisfy front-end object properties
-        return {
-            "status": "success", 
-            "web_link": target_web_link,
-            "pdf_url": firebase_pdf_url,
-            "qr_image_url": firebase_qr_url
+        with open(temporary_file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+        db, bucket = get_firebase_db()
+        clean_serial = sanitize_filename(serial)
+        
+        # 1. Upload certificate PDF to Firebase Storage
+        pdf_blob = bucket.blob(f"certificates/{clean_serial}_{int(time.time())}.pdf")
+        pdf_blob.upload_from_filename(temporary_file_path)
+        pdf_blob.make_public()
+        
+        target_web_link = f"https://qrcertificates-30ddb.web.app/?id={quote_plus(serial)}"
+        
+        # FIXED: Self-contained direct inline QR generation script blocks to bypass missing ai_mapping function attributes
+        qr_engine = qrcode.QRCode(version=1, box_size=10, border=4)
+        qr_engine.add_data(target_web_link)
+        qr_engine.make(fit=True)
+        qr_image = qr_engine.make_image(fill_color="black", back_color="white")
+        
+        local_qr_path = os.path.join(TEMP_PDF_DIR, f"qr_{clean_serial}_{int(time.time())}.png")
+        qr_image.save(local_qr_path)
+        
+        # 2. Upload QR Image to Firebase Storage
+        qr_blob = bucket.blob(f"qr_codes/qr_{clean_serial}.png")
+        qr_blob.upload_from_filename(local_qr_path)
+        qr_blob.make_public()
+        
+        # Clean up local temporary QR image immediately after upload completes
+        if os.path.exists(local_qr_path):
+            os.remove(local_qr_path)
+        
+        consolidated_payload = {
+            "serial": serial,
+            "cert": cert,
+            "model": model,
+            "calibration_date": cal,
+            "expiry_date": exp,
+            "lot": lot,
+            "pdf_url": pdf_blob.public_url,
+            "qr_image_url": qr_blob.public_url,
+            "qr_link": target_web_link,
+            "last_updated": firestore.SERVER_TIMESTAMP,
+            "source_page": 1
         }
-
+        
+        collection_ref = db.collection(collection)
+        collection_ref.document(clean_serial).set(consolidated_payload, merge=True)
+        return {"status": "success", "web_link": target_web_link}
+        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Transaction runtime aborted: {str(e)}")
-
+        import traceback
+        print("❌ CRITICAL BACKEND SAVE FAILURE ERROR OVER COLLECTION:")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Backend Error: {str(e)}")
     finally:
         if os.path.exists(temporary_file_path):
             os.remove(temporary_file_path)
+
+@app.post("/api/records/edit")
+async def edit_record(payload: EditRecordPayload = Body(...)):
+    """
+    Updates details of an existing document within a collection without altering original PDF attachments.
+    """
+    try:
+        db, _ = get_firebase_db()
+        clean_id = sanitize_filename(payload.id)
+        doc_ref = db.collection(payload.collection).document(clean_id)
+        
+        if not doc_ref.get().exists:
+            raise HTTPException(status_code=404, detail="Target document reference not found in database.")
+            
+        update_payload = {
+            "serial": payload.serial,
+            "model": payload.model,
+            "calibration_date": payload.calibration_date,
+            "expiry_date": payload.expiry_date,
+            "cert": payload.cert,
+            "lot": payload.lot,
+            "last_updated": firestore.SERVER_TIMESTAMP
+        }
+        
+        doc_ref.set(update_payload, merge=True)
+        return {"status": "success", "message": "Record successfully updated."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to modify dataset document: {str(e)}")
+
+@app.delete("/api/records/delete")
+async def delete_records(payload: DeleteRecordsPayload = Body(...)):
+    """
+    Permanently deletes single or batch target records inside a Firestore collection context.
+    Matches clean collection routes mapped from UI selections.
+    """
+    try:
+        db, _ = get_firebase_db()
+        collection_ref = db.collection(payload.collection)
+        
+        batch = db.batch()
+        deleted_count = 0
+        
+        for doc_id in payload.ids:
+            clean_id = sanitize_filename(doc_id)
+            doc_ref = collection_ref.document(clean_id)
+            batch.delete(doc_ref)
+            deleted_count += 1
+            
+        batch.commit()
+        return {"status": "success", "message": f"Successfully dropped {deleted_count} system records."}
+    except Exception as e:
+        print(f"❌ Failed processing drop manifest requests inside FireStore Engine: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Database execution crash: {str(e)}")
