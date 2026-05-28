@@ -38,7 +38,7 @@ ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
     "https://cert_extract_app.web.app"
 ]
->>>>>>> aa03381 (Add root endpoint for Render health check)
+
 
 app.add_middleware(
     CORSMiddleware,
