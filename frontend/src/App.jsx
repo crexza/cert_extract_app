@@ -216,42 +216,168 @@ export default function App() {
    * Orchestrates multipage document parsing using centralized upload API definitions
    */
   const processFilesPipeline = async (filesList) => {
-    if (!filesList || filesList.length === 0) return;
-    setSelectedPdfFile(filesList[0]);
-    setLoading(true);
-    setLoadingText('Processing document options...');
+  if (!filesList || filesList.length === 0) return;
 
-    try {
-      let flattenedPageResults = [];
-      for (const file of Array.from(filesList)) {
-        const response = await certApi.extractPdfData(file, isServiceUpload);
-        if (response && response.data) {
-          flattenedPageResults = [...flattenedPageResults, ...response.data];
-        }
+  setSelectedPdfFile(filesList[0]);
+  setLoading(true);
+  setLoadingText('Processing document options...');
+
+  try {
+    let flattenedPageResults = [];
+
+    for (const file of Array.from(filesList)) {
+      const response = await certApi.extractPdfData(
+        file,
+        isServiceUpload
+      );
+
+      console.log("FULL BACKEND RESPONSE:", response);
+
+      // FIX: support BOTH array response and object response
+      let extractedData = [];
+
+      if (Array.isArray(response.data)) {
+        extractedData = response.data;
+      } else if (response.data) {
+        extractedData = [response.data];
       }
 
-      setBatchResults(flattenedPageResults);
+      // FIX: normalize backend fields
+      extractedData = extractedData.map((result, index) => ({
+        ...result,
 
-      if (flattenedPageResults.length > 0) {
-        const result = flattenedPageResults[0];
-        setFormFields({
-          serial: result.serial === "MANUAL_ENTRY_REQUIRED" ? "" : result.serial || '',
-          model: result.model || '',
-          cal: result.calibration_date || result.cal || '',
-          exp: result.expiry_date || result.exp || '',
-          cert: result.cert || '',
-          lot: result.lot || '',
-          pdf_url: result.pdf_url || ''
-        });
-      }
-      setIsBatchModalOpen(true);
-    } catch (error) {
-      console.error('❌ File parsing pipeline execution crash:', error);
-      triggerToast("Failed to parse document layout fields.", "error");
-    } finally {
-      setLoading(false);
+        id:
+          result.id ||
+          `STAGE_OK_${Date.now()}_${index}`,
+
+        serial:
+          result.serial || '',
+
+        model:
+          result.model || '',
+
+        // IMPORTANT FIX
+        cal:
+          result.cal ||
+          result.calibration_date ||
+          '',
+
+        exp:
+          result.exp ||
+          result.expiry_date ||
+          '',
+
+        calibration_date:
+          result.calibration_date ||
+          result.cal ||
+          '',
+
+        expiry_date:
+          result.expiry_date ||
+          result.exp ||
+          '',
+
+        cert:
+          result.cert || '',
+
+        lot:
+          result.lot || '',
+
+        type:
+          result.type || 'GD',
+
+        pdf_url:
+          result.pdf_url || ''
+      }));
+
+      flattenedPageResults = [
+        ...flattenedPageResults,
+        ...extractedData
+      ];
     }
-  };
+
+    console.log(
+      "NORMALIZED EXTRACTION RESULTS:",
+      flattenedPageResults
+    );
+
+    // FIX: validation now supports new backend field names
+    const validResults = flattenedPageResults.filter(
+      (result) =>
+        result.serial &&
+        result.model &&
+        (result.cal || result.calibration_date) &&
+        (result.exp || result.expiry_date)
+    );
+
+    if (validResults.length === 0) {
+      throw new Error(
+        'Failed to parse document layout fields.'
+      );
+    }
+
+    setBatchResults(validResults);
+
+    const firstResult = validResults[0];
+
+    setFormFields({
+      serial:
+        firstResult.serial ===
+        'MANUAL_ENTRY_REQUIRED'
+          ? ''
+          : firstResult.serial || '',
+
+      model:
+        firstResult.model || '',
+
+      // IMPORTANT FIX
+      cal:
+        firstResult.calibration_date ||
+        firstResult.cal ||
+        '',
+
+      exp:
+        firstResult.expiry_date ||
+        firstResult.exp ||
+        '',
+
+      cert:
+        firstResult.cert || '',
+
+      lot:
+        firstResult.lot || '',
+
+      pdf_url:
+        firstResult.pdf_url || ''
+    });
+
+    setIsBatchModalOpen(true);
+
+    triggerToast(
+      'PDF extraction completed successfully!',
+      'success'
+    );
+
+  } catch (error) {
+    console.error(
+      '❌ File parsing pipeline execution crash:',
+      error
+    );
+
+    console.error(
+      '❌ FULL ERROR OBJECT:',
+      JSON.stringify(error, null, 2)
+    );
+
+    triggerToast(
+      error.message ||
+      'Failed to parse document layout fields.',
+      'error'
+    );
+  } finally {
+    setLoading(false);
+  }
+};
 
   /**
    * Commits verified staging entries sequentially to Firebase storage context
