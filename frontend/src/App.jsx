@@ -304,7 +304,6 @@ export default function App() {
     // FIX: validation now supports new backend field names
     const validResults = flattenedPageResults.filter(
       (result) =>
-        result.serial &&
         result.model &&
         (result.cal || result.calibration_date) &&
         (result.exp || result.expiry_date)
@@ -322,7 +321,7 @@ export default function App() {
 
     setFormFields({
       serial:
-        firstResult.serial ===
+        firstResult.serial ||
         'MANUAL_ENTRY_REQUIRED'
           ? ''
           : firstResult.serial || '',
