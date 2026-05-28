@@ -14,7 +14,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000
  */
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000, // Extend fallback boundaries for Groq inference processing
+  timeout: 120000, // Extend fallback boundaries for Groq inference processing
   headers: {
     'Accept': 'application/json',
   },
