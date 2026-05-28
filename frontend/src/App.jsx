@@ -375,8 +375,9 @@ export default function App() {
       'error'
     );
   } finally {
-    setLoading(false);
-  }
+  setLoading(false);
+  setDragActive(false);
+}
 };
 
   /**
@@ -502,10 +503,39 @@ export default function App() {
    * Resets local file form values to default state layers
    */
   const clearFormFields = () => {
-    setFormFields({ serial: '', model: '', cal: '', exp: '', cert: '', lot: '', pdf_url: '' });
-    setBatchResults([]); 
-    setSelectedPdfFile(null); 
+    setFormFields({
+      serial: '',
+      model: '',
+      cal: '',
+      exp: '',
+      cert: '',
+      lot: '',
+      pdf_url: ''
+    });
+
+    setBatchResults([]);
+
+    setSelectedPdfFile(null);
+
     setUploadTypeSelected(false);
+
+    // IMPORTANT FIXES
+    setSelectedItem(null);
+
+    setIsModalOpen(false);
+
+    setIsBatchModalOpen(false);
+
+    setDragActive(false);
+
+    // Reset physical file input
+    const fileInput = document.querySelector(
+      'input[type="file"]'
+    );
+
+    if (fileInput) {
+      fileInput.value = '';
+    }
   };
 
   /**

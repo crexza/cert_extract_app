@@ -103,11 +103,28 @@ export const certApi = {
       formData.append('file', payload.file);
       formData.append('serial', payload.serial);
       formData.append('model', payload.model || '');
-      formData.append('cal', payload.cal);
-      formData.append('exp', payload.exp);
+      formData.append(
+        'cal',
+        payload.cal || payload.calibration_date || ''
+      );
+
+      formData.append(
+        'exp',
+        payload.exp || payload.expiry_date || ''
+      );
       formData.append('cert', payload.cert || '');
       formData.append('lot', payload.lot || '');
       formData.append('collection', payload.collection);
+
+      console.log("SAVE PAYLOAD:", {
+        serial: payload.serial,
+        model: payload.model,
+        cal: payload.cal,
+        exp: payload.exp,
+        cert: payload.cert,
+        lot: payload.lot,
+        collection: payload.collection
+      });
 
       const response = await apiClient.post('/save', formData, {
         headers: {
