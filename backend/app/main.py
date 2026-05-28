@@ -15,7 +15,30 @@ from urllib.parse import quote_plus
 TEMP_PDF_DIR = "/tmp/temp_pdfs"
 os.makedirs(TEMP_PDF_DIR, exist_ok=True)
 
-app = FastAPI(title="CertExtract Core API Engine")
+
+app = FastAPI(
+    title="CertExtract Core API",
+    description="Decoupled backend microservice managing Firestore entity mapping and AI extraction routines.",
+    version="1.0.0"
+)
+
+@app.get("/")
+def root():
+    return {
+        "status": "online",
+        "service": "CertExtract Functional API Engine"
+    }
+
+# --- CORS INTERCEPTOR CONFIGURATION ---
+# Allows explicit connection parameters from your Vite development and containerized environments
+ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://cert_extract_app.web.app"
+]
+>>>>>>> aa03381 (Add root endpoint for Render health check)
 
 app.add_middleware(
     CORSMiddleware,
