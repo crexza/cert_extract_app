@@ -2,6 +2,7 @@ import os
 import json
 import uuid
 import logging
+import asyncio  # Added to ensure complete support for asynchronous execution routines
 from datetime import datetime
 from .pdf_processing import is_valid_safety_document
 # Import the custom multi-account failover wrapper to handle automatic key rotation
@@ -14,11 +15,11 @@ logger = logging.getLogger("ai_mapping")
 MODEL_PRIORITY = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
 
 
-def process_single_page_task(pg_file, pg_num, page_text, is_service, valid_types):
+async def process_single_page_task(pg_file, pg_num, page_text, is_service, valid_types):
     """
     Parses a single page document using Groq LLM with multi-account rotation support.
     Validates the text structure upfront, manages structural prompt templates, and
-    enforces downstream schema constraints.
+    enforces downstream schema constraints asynchronously to prevent blocking Render health checks.
     """
 
     unique_staging_id = f"STAGE_OK_{uuid.uuid4().hex[:6].upper()}"
@@ -44,7 +45,6 @@ def process_single_page_task(pg_file, pg_num, page_text, is_service, valid_types
         }
 
     try:
-
         # The failover rotation system initializes clients dynamically on the fly.
         structured_prompt = f"""
 Analyze the following text extracted via OCR from a safety equipment certificate.
@@ -64,8 +64,8 @@ DOCUMENT TEXT:
 {page_text}
 """
 
-        # Replace old static client execution block with multi-key resilient rotator wrapper
-        inference = chat_completion_with_failover(
+        # FIXED: Prefixed the call with 'await' to execute the async key rotator correctly
+        inference = await chat_completion_with_failover(
             model=MODEL_PRIORITY[0],
             messages=[
                 {
@@ -106,7 +106,7 @@ DOCUMENT TEXT:
             temperature=0.0
         )
 
-        # Deserialize JSON response content safely
+        # Deserialize JSON response content safely from the resolved async object
         raw_content = inference.choices[0].message.content
 
         print("\n========== RAW GROQ RESPONSE ==========")
@@ -123,7 +123,6 @@ DOCUMENT TEXT:
 
         # Extract JSON object safely
         import re
-
         match = re.search(r"\{.*\}", cleaned_content, re.S)
 
         if not match:
@@ -186,7 +185,6 @@ DOCUMENT TEXT:
         return item
 
     except Exception as error:
-
         logger.error(
             f"Mapping pipeline failure on page {pg_num}: {str(error)}"
         )

@@ -111,7 +111,7 @@ async def extract_pdf(file: UploadFile = File(...), is_service: str = Form("fals
 
         for pg_file, pg_num in isolated_pages:
             text_context = page_text_map.get(pg_num, "")
-            parsed_row = ai_mapping.process_single_page_task(pg_file, pg_num, text_context, is_service_bool, valid_types)
+            parsed_row = await ai_mapping.process_single_page_task(pg_file, pg_num, text_context, is_service_bool, valid_types)
             parsed_row["pdf_url"] = preview_blob.public_url
             extracted_manifest.append(parsed_row)
             
